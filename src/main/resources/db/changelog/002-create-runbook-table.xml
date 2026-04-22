@@ -13,7 +13,7 @@
             <column name="title" type="varchar(255)">
                 <constraints nullable="false"/>
             </column>
-            <column name="description" type="text">
+            <column name="content" type="text">
                 <constraints nullable="false"/>
             </column>
             <column name="created_at" type="timestamp">

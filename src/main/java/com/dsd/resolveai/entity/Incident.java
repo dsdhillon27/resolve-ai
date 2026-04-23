@@ -1,5 +1,7 @@
 package com.dsd.resolveai.entity;
 
+import com.dsd.resolveai.enums.IncidentSeverity;
+import com.dsd.resolveai.enums.IncidentStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -36,11 +38,13 @@ public class Incident {
 
     @NotNull(message = "Status cannot be null")
     @Column(name = "status", nullable = false)
-    private String status;
+    @Enumerated(EnumType.STRING)
+    private IncidentStatus status;
 
     @NotNull(message = "Severity cannot be null")
     @Column(name = "severity", nullable = false)
-    private String severity;
+    @Enumerated(EnumType.STRING)
+    private IncidentSeverity severity;
 
     @NotNull(message = "Created At cannot be null")
     @Column(name = "created_at", nullable = false)

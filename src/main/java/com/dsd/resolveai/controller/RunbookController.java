@@ -6,6 +6,7 @@ import com.dsd.resolveai.dto.UpdateIncidentRequest;
 import com.dsd.resolveai.dto.UpdateRunbookRequest;
 import com.dsd.resolveai.entity.Runbook;
 import com.dsd.resolveai.mapper.RunbookMapper;
+import com.dsd.resolveai.service.IngestionService;
 import com.dsd.resolveai.service.RunbookService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ import java.util.UUID;
 public class RunbookController {
 
     private final RunbookService runbookService;
+    private final IngestionService ingestionService;
 
     @PostMapping
     public ResponseEntity<RunbookResponse> createRunbook(@Valid @RequestBody CreateRunbookRequest request) {
@@ -53,6 +55,12 @@ public class RunbookController {
     public ResponseEntity<RunbookResponse> updateRunbook(@RequestBody UpdateRunbookRequest request, @PathVariable UUID id) {
         RunbookResponse response = runbookService.updateRunbook(request, id);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/ingest")
+    public ResponseEntity<Void> ingest(@PathVariable UUID id) {
+        ingestionService.ingest(id);
+        return ResponseEntity.ok().build();
     }
 
 }

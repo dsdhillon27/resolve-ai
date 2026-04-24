@@ -13,12 +13,14 @@ public class ChatService {
 
     private final ChatClient chatClient;
 
-    public ChatService(ChatClient.Builder chatClientBuilder, VectorStore vectorStore) {
+    public ChatService(
+            ChatClient.Builder chatClientBuilder, VectorStore vectorStore, IncidentTools incidentTools) {
         this.chatClient = chatClientBuilder
                 .defaultAdvisors(
                     QuestionAnswerAdvisor.builder(vectorStore).build(),
                     new SimpleLoggerAdvisor()
                 )
+                .defaultTools(incidentTools)
                 .build();
     }
 

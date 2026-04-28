@@ -20,8 +20,20 @@ spring:
     vectorstore:
       pgvector:
         initialize-schema: true
+    chat:
+      client:
+        observations:
+          include-prompts: true
 
 logging:
   level:
     org.springframework.ai: DEBUG
     org.springframework.jdbc.core.JdbcTemplate: DEBUG
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces

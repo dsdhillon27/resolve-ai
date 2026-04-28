@@ -11,5 +11,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: resolve-ai-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # This is the Jaeger Web UI port
+      - "4318:4318"   # This is the OpenTelemetry (OTLP) HTTP receiver porte
+
 volumes:
   postgres_data:

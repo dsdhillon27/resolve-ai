@@ -7,4 +7,5 @@
 
     <include file="classpath:/db/changelog/001-create-incident-table.xml"/>
     <include file="classpath:/db/changelog/002-create-runbook-table.xml"/>
+    <include file="classpath:/db/changelog/003-update-incident-table.xml"/>
 </databaseChangeLog>

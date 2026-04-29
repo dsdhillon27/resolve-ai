@@ -50,4 +50,10 @@ public class Incident {
     @Column(name = "created_at", nullable = false)
     @CreatedDate
     private Instant createdAt;
+
+    @Column(name = "assignee")
+    private String assignee;
+
+    @Column(name = "resolution_notes")
+    private String resolutionNotes;
 }

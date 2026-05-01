@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -113,12 +112,13 @@ public class IncidentService {
 
     private void saveIncidentInVectorDB(Incident savedIncident) {
         Document doc = new Document(
-                "Title: " + savedIncident.getTitle() + "\nDescription: " + savedIncident.getDescription(),
+                "Title: " + savedIncident.getTitle() + "\nDescription: " + savedIncident.getDescription(), "\nResolution Notes: " + savedIncident.getResolutionNotes(),
                 Map.of(
                         "type", "incident",
                         "incidentId", savedIncident.getId().toString(),
                         "status", savedIncident.getStatus().name(),
-                        "severity", savedIncident.getSeverity().name()
+                        "severity", savedIncident.getSeverity().name(),
+                        "assignee", savedIncident.getAssignee()
                 )
         );
 

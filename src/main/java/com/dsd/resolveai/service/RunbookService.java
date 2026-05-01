@@ -9,10 +9,14 @@ import com.dsd.resolveai.mapper.RunbookMapper;
 import com.dsd.resolveai.repository.RunbookRepository;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -20,11 +24,15 @@ import java.util.UUID;
 public class RunbookService {
 
     private final RunbookRepository runbookRepository;
+    private final VectorStore vectorStore;
 
     @Transactional
     public RunbookResponse createRunbook(CreateRunbookRequest request) {
         Runbook runbook = RunbookMapper.toEntity(request);
         Runbook savedRunbook = runbookRepository.save(runbook);
+
+        saveRunbookInVectorDB(savedRunbook);
+
         return RunbookMapper.toResponse(savedRunbook);
     }
 
@@ -54,4 +62,22 @@ public class RunbookService {
         Runbook savedRunbook = runbookRepository.save(updatedRunbook);
         return RunbookMapper.toResponse(savedRunbook);
     }
+
+    private void saveRunbookInVectorDB(Runbook savedRunbook) {
+        Document document = new Document(
+                "Title: " + savedRunbook.getTitle() + "\n\n" + savedRunbook.getContent(),
+                Map.of(
+                        "type", "runbook",
+                        "runbookId", savedRunbook.getId().toString(),
+                        "title", savedRunbook.getTitle()
+                )
+        );
+
+        TokenTextSplitter splitter = new TokenTextSplitter();
+
+        List<Document> chunks = splitter.apply(List.of(document));
+
+        vectorStore.add(chunks);
+    }
+
 }

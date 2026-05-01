@@ -26,10 +26,11 @@ public class IncidentTools {
     public IncidentResponse createIncident(
             @ToolParam(description = "Title of the incident") String title,
             @ToolParam(description = "Description of the incident") String description,
-            @ToolParam(description = "Severity level: LOW, MEDIUM, HIGH") String severity
+            @ToolParam(description = "Severity level: LOW, MEDIUM, HIGH") String severity,
+            @ToolParam(description = "Assignee of the ticket, if not mentioned keep it null") String assignee
     ){
         CreateIncidentRequest request = new CreateIncidentRequest(
-                title, description, IncidentSeverity.valueOf(severity.toUpperCase()));
+                title, description, IncidentSeverity.valueOf(severity.toUpperCase()), assignee);
         IncidentResponse response = incidentService.createIncident(request);
 
         return response;

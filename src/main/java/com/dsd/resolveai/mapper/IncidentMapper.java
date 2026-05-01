@@ -27,7 +27,9 @@ public class IncidentMapper {
                 incident.getDescription(),
                 incident.getSeverity(),
                 incident.getStatus(),
-                incident.getCreatedAt()
+                incident.getCreatedAt(),
+                incident.getAssignee(),
+                incident.getResolutionNotes()
         );
     }
 

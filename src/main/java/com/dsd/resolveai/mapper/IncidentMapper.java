@@ -17,6 +17,7 @@ public class IncidentMapper {
         incident.setDescription(request.description());
         incident.setStatus(OPEN);
         incident.setSeverity(request.severity());
+        incident.setAssignee(request.assignee());
         return incident;
     }
 

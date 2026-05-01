@@ -12,5 +12,7 @@ public record IncidentResponse(
     String description,
     IncidentSeverity severity,
     IncidentStatus status,
-    Instant createdAt
+    Instant createdAt,
+    String assignee,
+    String resolutionNotes
 ) { }

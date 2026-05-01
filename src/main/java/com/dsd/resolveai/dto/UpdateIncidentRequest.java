@@ -7,5 +7,7 @@ public record UpdateIncidentRequest(
         String title,
         String description,
         IncidentSeverity severity,
-        IncidentStatus status
+        IncidentStatus status,
+        String assignee,
+        String resolutionNotes
 ) { }

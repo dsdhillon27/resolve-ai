@@ -7,5 +7,6 @@ import jakarta.validation.constraints.NotNull;
 public record CreateIncidentRequest(
         @NotBlank(message = "Title is required") String title,
         @NotBlank(message = "Description is required") String description,
-        @NotNull(message = "Severity is required") IncidentSeverity severity
+        @NotNull(message = "Severity is required") IncidentSeverity severity,
+        String assignee
 ) { }

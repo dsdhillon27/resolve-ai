@@ -19,6 +19,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -86,7 +87,10 @@ public class IncidentService {
                 filterExp = b.and(filterExp, b.eq("severity", severity.toUpperCase()));
             }
             List<Document> semanticMatches = vectorStore.similaritySearch(
-                    SearchRequest.builder().query(keyword).filterExpression(filterExp.build()).build()
+                    SearchRequest.builder().query(keyword)
+                            .filterExpression(filterExp.build())
+                            .topK(10)
+                            .build()
             );
             List<UUID> matchingIds = semanticMatches.stream()
                     .map(doc -> UUID.fromString(doc.getMetadata().get("incidentId").toString()))
@@ -111,17 +115,32 @@ public class IncidentService {
     }
 
     private void saveIncidentInVectorDB(Incident savedIncident) {
-        Document doc = new Document(
-                "Title: " + savedIncident.getTitle() + "\nDescription: " + savedIncident.getDescription(), "\nResolution Notes: " + savedIncident.getResolutionNotes(),
-                Map.of(
-                        "type", "incident",
-                        "incidentId", savedIncident.getId().toString(),
-                        "status", savedIncident.getStatus().name(),
-                        "severity", savedIncident.getSeverity().name(),
-                        "assignee", savedIncident.getAssignee()
-                )
-        );
 
+        StringBuilder textContent = new StringBuilder("Title: " + savedIncident.getTitle() +
+                "\nDescription: " + savedIncident.getDescription());
+
+        if (savedIncident.getResolutionNotes() != null) {
+            textContent.append("\nResolution Notes: " + savedIncident.getResolutionNotes());
+        }
+
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("type", "incident");
+        metadata.put("incidentId", savedIncident.getId().toString());
+
+        if (savedIncident.getStatus() != null) {
+            metadata.put("status", savedIncident.getStatus().name());
+        }
+
+        if (savedIncident.getSeverity() != null) {
+            metadata.put("severity", savedIncident.getSeverity().name());
+        }
+
+        if (savedIncident.getAssignee() != null) {
+            metadata.put("assignee", savedIncident.getAssignee());
+        }
+
+        Document doc = new Document(String.valueOf(textContent), metadata);
         vectorStore.add(List.of(doc));
     }
+
 }

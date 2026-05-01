@@ -30,6 +30,7 @@ public class IngestionService {
         Document document = new Document(
                 runbook.getContent(),
                 Map.of(
+                        "type", "runbook",
                         "runbookId", runbook.getId().toString(),
                         "title", runbook.getTitle()
                 )

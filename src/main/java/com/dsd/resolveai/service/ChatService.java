@@ -1,7 +1,9 @@
 package com.dsd.resolveai.service;
 
 import com.dsd.resolveai.advisor.PIIRedactionAdvisor;
+import com.dsd.resolveai.tools.DatabaseTools;
 import com.dsd.resolveai.tools.IncidentTools;
+import com.dsd.resolveai.tools.RunbookTools;
 import jakarta.persistence.EntityManager;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
@@ -10,14 +12,18 @@ import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvi
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ChatService {
 
     private final ChatClient chatClient;
+
     private final ChatMemory chatMemory = MessageWindowChatMemory.builder()
             .chatMemoryRepository(new InMemoryChatMemoryRepository())
             .maxMessages(10)
@@ -25,24 +31,25 @@ public class ChatService {
 
     public ChatService(
             ChatClient.Builder chatClientBuilder,
-            VectorStore vectorStore,
-            IncidentTools incidentTools) {
+            IncidentTools incidentTools,
+            RunbookTools runbookTools,
+            DatabaseTools databaseTools,
+            @Value("classpath:system-prompt.st") Resource systemPromptResource) {
 
-        String systemPrompt = """
-            You are an enterprise AI agent.  
-            Please answer only as per the context provided.
-            """;
+        SystemPromptTemplate systemPromptTemplate =
+                new SystemPromptTemplate(systemPromptResource);
+        String systemPrompt = systemPromptTemplate.render();
+
         this.chatClient = chatClientBuilder
                 .defaultSystem(systemPrompt)
                 .defaultAdvisors(
                     new SimpleLoggerAdvisor(),
-                    QuestionAnswerAdvisor.builder(vectorStore).build(),
                     MessageChatMemoryAdvisor.builder(chatMemory)
                             .conversationId("default-session")
                             .build(),
                     new PIIRedactionAdvisor()
                 )
-                .defaultTools(incidentTools)
+                .defaultTools(incidentTools, runbookTools, databaseTools)
                 .build();
     }
 

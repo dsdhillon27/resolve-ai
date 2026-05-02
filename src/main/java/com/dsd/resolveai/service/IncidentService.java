@@ -13,8 +13,11 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.data.domain.Example;
+import org.springframework.data.domain.ExampleMatcher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.convert.QueryByExamplePredicateBuilder;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,33 +72,32 @@ public class IncidentService {
     }
 
     @Transactional(readOnly = true)
-    public List<IncidentResponse> searchIncidents(UUID id, String status, String severity, String keyword, String sortProperty, String sortDirection, Integer limit) {
+    public List<IncidentResponse> dynamicSearch(Incident probe, String keyword, String sortProperty, String sortDirection, Integer limit) {
 
-        Specification<Incident> spec = Specification.allOf(
-                IncidentSpecification.hasId(id),
-                IncidentSpecification.hasStatus(status),
-                IncidentSpecification.hasSeverity(severity)
-        );
+        Specification<Incident> spec = Specification.where(null);
+
+        if (probe != null) {
+            Example<Incident> example = Example.of(probe, ExampleMatcher.matchingAll().withIgnoreCase());
+            spec = (root, query, cb) -> QueryByExamplePredicateBuilder.getPredicate(root, cb, example);
+        }
 
         if (keyword != null && !keyword.trim().isEmpty()) {
             FilterExpressionBuilder b = new FilterExpressionBuilder();
             var filterExp = b.eq("type", "incident");
-            if (status != null && !status.trim().isEmpty()) {
-                filterExp = b.and(filterExp, b.eq("status", status.toUpperCase()));
+
+            if (probe != null && probe.getStatus() != null) {
+                filterExp = b.and(filterExp, b.eq("status", probe.getStatus().name()));
             }
-            if (severity != null && !severity.trim().isEmpty()) {
-                filterExp = b.and(filterExp, b.eq("severity", severity.toUpperCase()));
+            if (probe != null && probe.getSeverity() != null) {
+                filterExp = b.and(filterExp, b.eq("severity", probe.getSeverity().name()));
             }
             List<Document> semanticMatches = vectorStore.similaritySearch(
-                    SearchRequest.builder().query(keyword)
-                            .filterExpression(filterExp.build())
-                            .topK(10)
-                            .build()
+                    SearchRequest.builder().query(keyword).filterExpression(filterExp.build()).build()
             );
             List<UUID> matchingIds = semanticMatches.stream()
                     .map(doc -> UUID.fromString(doc.getMetadata().get("incidentId").toString()))
                     .toList();
-            if (matchingIds.isEmpty()) return List.of(); // Semantic search found nothing
+            if (matchingIds.isEmpty()) return List.of();
 
             spec = spec.and((root, query, cb) -> root.get("id").in(matchingIds));
         }
@@ -105,7 +107,6 @@ public class IncidentService {
             Sort.Direction direction = "DESC".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
             sort = Sort.by(direction, sortProperty);
         }
-
         int actualLimit = (limit != null && limit > 0) ? Math.min(limit, 50) : 10;
 
         return incidentRepository.findAll(spec, PageRequest.of(0, actualLimit, sort))

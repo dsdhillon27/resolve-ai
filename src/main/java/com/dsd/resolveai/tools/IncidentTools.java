@@ -2,21 +2,25 @@ package com.dsd.resolveai.tools;
 
 import com.dsd.resolveai.dto.CreateIncidentRequest;
 import com.dsd.resolveai.dto.IncidentResponse;
+import com.dsd.resolveai.entity.Incident;
 import com.dsd.resolveai.enums.IncidentSeverity;
 import com.dsd.resolveai.service.IncidentService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.UUID;
 
-@Service
+@Component
 @RequiredArgsConstructor
 public class IncidentTools {
 
     private final IncidentService incidentService;
+    private final ObjectMapper objectMapper;
 
     @Tool(description = """
         Create a new incident in the Incident table 
@@ -37,21 +41,29 @@ public class IncidentTools {
     }
 
     @Tool(description = """
-        Search, filter, or look up existing incidents. 
-        MUST be used before creating a new incident to check for duplicates!
-        Can find incidents by exact status/severity, or semantically search using a keyword.
+        Search the incidents table dynamically. 
+        You MUST call 'getSchema' tool first to understand the exact column names available!
     """)
     public List<IncidentResponse> searchIncidents(
-            @ToolParam(description = "Exact UUID if known. Otherwise leave empty.") String id,
-            @ToolParam(description = "Exact status: OPEN, IN_PROGRESS, RESOLVED, CLOSED") String status,
-            @ToolParam(description = "Exact severity: LOW, MEDIUM, HIGH, CRITICAL") String severity,
-            @ToolParam(description = "Keyword to semantically search incident descriptions, make sure the keyword covers the key details") String keyword,
-            @ToolParam(description = "The exact database field to sort by (e.g., createdAt, status).") String sortProperty,
-            @ToolParam(description = "The sort direction: ASC or DESC. Default is DESC.") String sortDirection,
-            @ToolParam(description = "Max number of results to return (Default 10)") Integer limit
+            @ToolParam(description = "A JSON object where keys are EXACT database columns and values are the search terms. Example: '{\"status\": \"OPEN\", \"assignee\": \"Rahul\"}'. Only include fields you want to filter by.")
+            String exactFiltersJson,
+            @ToolParam(description = "Natural language keyword to semantically search incident descriptions via Vector DB.")
+            String keyword,
+            @ToolParam(description = "The database field to sort by.") String sortProperty,
+            @ToolParam(description = "Sort direction: ASC or DESC. Default is DESC.") String sortDirection,
+            @ToolParam(description = "Max results (Default 10).") Integer limit
     ) {
-        UUID uuid = (id != null && !id.trim().isEmpty()) ? UUID.fromString(id) : null;
-        return incidentService.searchIncidents(uuid, status, severity, keyword, sortProperty, sortDirection, limit);
+        try {
+            Incident probe = null;
+            if (exactFiltersJson != null && !exactFiltersJson.trim().isEmpty()) {
+                probe = objectMapper.readValue(exactFiltersJson, Incident.class);
+            }
+
+            return incidentService.dynamicSearch(probe, keyword, sortProperty, sortDirection, limit);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse filters. Ensure your JSON matches the schema.", e);
+        }
     }
 
 }

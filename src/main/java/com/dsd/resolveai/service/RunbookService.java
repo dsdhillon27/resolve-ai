@@ -67,9 +67,12 @@ public class RunbookService {
 
     public List<String> searchRunbook(String keyword){
 
+        FilterExpressionBuilder filterExpressionBuilder = new FilterExpressionBuilder();
+        var filterExpression = filterExpressionBuilder.eq("type", "runbook");
+
         List<Document> documents = vectorStore.similaritySearch(SearchRequest.builder()
                 .query(keyword)
-                .filterExpression("type == 'runbook'")
+                .filterExpression(filterExpression.build())
                 .build());
 
         return documents.stream()

@@ -11,7 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +63,18 @@ public class RunbookService {
         Runbook updatedRunbook = RunbookMapper.updateEntityFromDto(request, runbook);
         Runbook savedRunbook = runbookRepository.save(updatedRunbook);
         return RunbookMapper.toResponse(savedRunbook);
+    }
+
+    public List<String> searchRunbook(String keyword){
+
+        List<Document> documents = vectorStore.similaritySearch(SearchRequest.builder()
+                .query(keyword)
+                .filterExpression("type == 'runbook'")
+                .build());
+
+        return documents.stream()
+                .map(document -> document.getFormattedContent())
+                .toList();
     }
 
     private void saveRunbookInVectorDB(Runbook savedRunbook) {

@@ -67,6 +67,10 @@ public class RunbookService {
 
     public List<String> searchRunbook(String keyword){
 
+        if (StringUtils.isBlank(keyword)) {
+            return List.of();
+        }
+
         FilterExpressionBuilder filterExpressionBuilder = new FilterExpressionBuilder();
         var filterExpression = filterExpressionBuilder.eq("type", "runbook");
 

@@ -9,6 +9,7 @@ import com.dsd.resolveai.mapper.IncidentMapper;
 import com.dsd.resolveai.repository.IncidentRepository;
 import com.dsd.resolveai.repository.IncidentSpecification;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -111,6 +112,34 @@ public class IncidentService {
 
         return incidentRepository.findAll(spec, PageRequest.of(0, actualLimit, sort))
                 .stream()
+                .map(IncidentMapper::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<IncidentResponse> findSimilarIncidents(String keyword) {
+
+        if (StringUtils.isBlank(keyword)) {
+            return List.of();
+        }
+
+        FilterExpressionBuilder filterExpressionBuilder = new FilterExpressionBuilder();
+        var filterExpression = filterExpressionBuilder.eq("type", "incident");
+
+        SearchRequest searchRequest = SearchRequest.builder()
+                .query(keyword)
+                .filterExpression(filterExpression.build())
+                .similarityThreshold(0.85)
+                .topK(3)
+                .build();
+
+        List<Document> semanticMatches = vectorStore.similaritySearch(searchRequest).stream().toList();
+
+        List<UUID> matchindIdList = semanticMatches.stream()
+                .map(document -> UUID.fromString(document.getMetadata().get("incidentId").toString()))
+                .toList();
+
+        return incidentRepository.findAllById(matchindIdList).stream()
                 .map(IncidentMapper::toResponse)
                 .toList();
     }

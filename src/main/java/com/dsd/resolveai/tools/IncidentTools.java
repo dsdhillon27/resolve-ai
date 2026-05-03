@@ -23,22 +23,39 @@ public class IncidentTools {
     private final ObjectMapper objectMapper;
 
     @Tool(description = """
-        Create a new incident in the Incident table 
-        when user reports a new issue and returns 
-        created incident details in the response
+        Create a new incident in the Incident table. 
+        If forceCreate is false or not provided, the system will check for semantic duplicates first.
+        If the system returns a warning about duplicates, you MUST STOP and ask the user for confirmation before retrying with forceCreate=true.
     """)
-    public IncidentResponse createIncident(
+    public Object createIncident(
             @ToolParam(description = "Title of the incident") String title,
             @ToolParam(description = "Description of the incident") String description,
             @ToolParam(description = "Severity level: LOW, MEDIUM, HIGH") String severity,
-            @ToolParam(description = "Assignee of the ticket, if not mentioned keep it null") String assignee
-    ){
+            @ToolParam(description = "Assignee of the ticket, if not mentioned keep it null") String assignee,
+            @ToolParam(description = "Set to true ONLY if the user explicitly confirms they want to bypass duplicate checks.") Boolean forceCreate
+    ) {
+        if (forceCreate == null || !forceCreate) {
+            String searchContent = title + " " + description;
+            List<IncidentResponse> similarIncidents = incidentService.findSimilarIncidents(searchContent);
+
+            if (!similarIncidents.isEmpty()) {
+                StringBuilder warning = new StringBuilder();
+                warning.append("WARNING: Found similar existing incidents in the database:\n");
+                for (IncidentResponse inc : similarIncidents) {
+                    warning.append("- [").append(inc.status()).append("] ").append(inc.title()).append("\n");
+                }
+                warning.append("\nDO NOT CREATE THIS TICKET YET. Ask the user if they still want to proceed. If they say yes, call this tool again with forceCreate=true.");
+
+                return warning.toString();
+            }
+        }
+        
         CreateIncidentRequest request = new CreateIncidentRequest(
                 title, description, IncidentSeverity.valueOf(severity.toUpperCase()), assignee);
-        IncidentResponse response = incidentService.createIncident(request);
 
-        return response;
+        return incidentService.createIncident(request);
     }
+
 
     @Tool(description = """
         Search the incidents table dynamically. 

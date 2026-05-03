@@ -2,20 +2,18 @@ package com.dsd.resolveai.controller;
 
 import com.dsd.resolveai.service.ChatService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/chat")
+@RequestMapping("/api/v1/conversations")
 @RequiredArgsConstructor
 public class ChatController {
 
     private final ChatService chatService;
 
-    @GetMapping
-    public String chat(@RequestParam String message) {
-        return chatService.chat(message);
+    @GetMapping("/{conversationId}")
+    public String chat(@PathVariable("conversationId") String conversationId,
+                       @RequestParam String message) {
+        return chatService.chat(conversationId, message);
     }
 }

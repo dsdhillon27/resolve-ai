@@ -5,10 +5,12 @@ import com.dsd.resolveai.tools.DatabaseTools;
 import com.dsd.resolveai.tools.IncidentTools;
 import com.dsd.resolveai.tools.RunbookTools;
 import jakarta.persistence.EntityManager;
+import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.VectorStoreChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
@@ -23,14 +25,11 @@ import org.springframework.stereotype.Service;
 public class ChatService {
 
     private final ChatClient chatClient;
-
-    private final ChatMemory chatMemory = MessageWindowChatMemory.builder()
-            .chatMemoryRepository(new InMemoryChatMemoryRepository())
-            .maxMessages(10)
-            .build();
+    private final VectorStore vectorStore;
 
     public ChatService(
             ChatClient.Builder chatClientBuilder,
+            VectorStore vectorStore,
             IncidentTools incidentTools,
             RunbookTools runbookTools,
             DatabaseTools databaseTools,
@@ -44,18 +43,20 @@ public class ChatService {
                 .defaultSystem(systemPrompt)
                 .defaultAdvisors(
                     new SimpleLoggerAdvisor(),
-                    MessageChatMemoryAdvisor.builder(chatMemory)
-                            .conversationId("default-session")
-                            .build(),
                     new PIIRedactionAdvisor()
                 )
                 .defaultTools(incidentTools, runbookTools, databaseTools)
                 .build();
+
+        this.vectorStore = vectorStore;
     }
 
-    public String chat(String message) {
+    public String chat(String conversationId, String message) {
         return chatClient
                 .prompt(message)
+                .advisors(VectorStoreChatMemoryAdvisor.builder(vectorStore)
+                        .conversationId(conversationId)
+                        .build())
                 .call()
                 .content();
     }

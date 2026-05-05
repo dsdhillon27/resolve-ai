@@ -1,58 +1,59 @@
 package com.dsd.resolveai.service;
 
-import com.dsd.resolveai.advisor.PIIRedactionAdvisor;
-import com.dsd.resolveai.tools.DatabaseTools;
-import com.dsd.resolveai.tools.IncidentTools;
-import com.dsd.resolveai.tools.RunbookTools;
-import jakarta.persistence.EntityManager;
-import lombok.RequiredArgsConstructor;
+import com.dsd.resolveai.enums.RouteDecision;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
-import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.VectorStoreChatMemoryAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
-import org.springframework.ai.chat.prompt.SystemPromptTemplate;
-import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 public class ChatService {
 
-    private final ChatClient chatClient;
+    private final ChatClient routerClient;
+    private final ChatClient sreClient;
+    private final ChatClient generalClient;
     private final VectorStore vectorStore;
 
     public ChatService(
-            ChatClient.Builder chatClientBuilder,
-            VectorStore vectorStore,
-            IncidentTools incidentTools,
-            RunbookTools runbookTools,
-            DatabaseTools databaseTools,
-            @Value("classpath:system-prompt.st") Resource systemPromptResource) {
+            @Qualifier("routerClient") ChatClient routerClient,
+            @Qualifier("sreClient") ChatClient sreClient,
+            @Qualifier("generalClient") ChatClient generalClient,
+            VectorStore vectorStore) {
 
-        SystemPromptTemplate systemPromptTemplate =
-                new SystemPromptTemplate(systemPromptResource);
-        String systemPrompt = systemPromptTemplate.render();
-
-        this.chatClient = chatClientBuilder
-                .defaultSystem(systemPrompt)
-                .defaultAdvisors(
-                    new SimpleLoggerAdvisor(),
-                    new PIIRedactionAdvisor()
-                )
-                .defaultTools(incidentTools, runbookTools, databaseTools)
-                .build();
-
+        this.routerClient = routerClient;
+        this.sreClient = sreClient;
+        this.generalClient = generalClient;
         this.vectorStore = vectorStore;
     }
 
     public String chat(String conversationId, String message) {
-        return chatClient
+
+        ChatClient activeClient = generalClient;
+
+        try {
+            RouteDecision routeDecision = routerClient.prompt()
+                    .call()
+                    .entity(RouteDecision.class);
+
+            if (routeDecision != null && routeDecision.route() != null) {
+                log.info("Route reasoning: {}", routeDecision.reasoning());
+                log.info("Route agent: {}", routeDecision.route());
+
+                activeClient = switch (routeDecision.route()) {
+                    case SRE_AGENT -> sreClient;
+                    case GENERAL_QA -> generalClient;
+                };
+            } else {
+                log.warn("Router returned null or invalid route, falling back to GENERAL_QA");
+            }
+        } catch (Exception e) {
+            log.warn("Router Agent failed to classify intent, falling back to GENERAL_QA", e);
+        }
+
+        return activeClient
                 .prompt(message)
                 .advisors(VectorStoreChatMemoryAdvisor.builder(vectorStore)
                         .conversationId(conversationId)

@@ -15,7 +15,9 @@ public class RunbookTools {
     private final RunbookService runbookService;
 
     @Tool(description = """
-            Search the runbooks and return the matching content.
+            Use this tool to find step-by-step instructions, guides, 
+            or how-tos for fixing specific technical problems or errors 
+            Runbooks contain solutions, not historical event logs.
             """)
     public List<String> searchRunbooks(
             @ToolParam(description = "Natural language keyword to search runbooks.")

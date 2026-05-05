@@ -58,7 +58,8 @@ public class IncidentTools {
 
 
     @Tool(description = """
-        Search the incidents table dynamically. 
+        Search the incidents table dynamically to find historical or active tickets/events 
+        DO NOT use this tool if the user is asking 'how to fix' something; use searchRunbooks instead.
         You MUST call 'getSchema' tool first to understand the exact column names available!
     """)
     public List<IncidentResponse> searchIncidents(

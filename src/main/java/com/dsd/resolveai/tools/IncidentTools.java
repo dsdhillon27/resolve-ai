@@ -2,6 +2,7 @@ package com.dsd.resolveai.tools;
 
 import com.dsd.resolveai.dto.CreateIncidentRequest;
 import com.dsd.resolveai.dto.IncidentResponse;
+import com.dsd.resolveai.dto.SearchIncidentRequest;
 import com.dsd.resolveai.entity.Incident;
 import com.dsd.resolveai.enums.IncidentSeverity;
 import com.dsd.resolveai.service.IncidentService;
@@ -60,28 +61,11 @@ public class IncidentTools {
     @Tool(description = """
         Search the incidents table dynamically to find historical or active tickets/events 
         DO NOT use this tool if the user is asking 'how to fix' something; use searchRunbooks instead.
-        You MUST call 'getSchema' tool first to understand the exact column names available!
     """)
     public List<IncidentResponse> searchIncidents(
-            @ToolParam(description = "A JSON object where keys are EXACT database columns and values are the search terms. Example: '{\"status\": \"OPEN\", \"assignee\": \"Rahul\"}'. Only include fields you want to filter by.")
-            String exactFiltersJson,
-            @ToolParam(description = "Natural language keyword to semantically search incident descriptions via Vector DB.")
-            String keyword,
-            @ToolParam(description = "The database field to sort by.") String sortProperty,
-            @ToolParam(description = "Sort direction: ASC or DESC. Default is DESC.") String sortDirection,
-            @ToolParam(description = "Max results (Default 10).") Integer limit
+            SearchIncidentRequest request
     ) {
-        try {
-            Incident probe = null;
-            if (exactFiltersJson != null && !exactFiltersJson.trim().isEmpty()) {
-                probe = objectMapper.readValue(exactFiltersJson, Incident.class);
-            }
-
-            return incidentService.dynamicSearch(probe, keyword, sortProperty, sortDirection, limit);
-
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse filters. Ensure your JSON matches the schema.", e);
-        }
+        return incidentService.dynamicSearch(request);
     }
 
 }

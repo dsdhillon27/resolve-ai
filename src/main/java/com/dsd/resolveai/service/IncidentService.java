@@ -2,6 +2,7 @@ package com.dsd.resolveai.service;
 
 import com.dsd.resolveai.dto.CreateIncidentRequest;
 import com.dsd.resolveai.dto.IncidentResponse;
+import com.dsd.resolveai.dto.SearchIncidentRequest;
 import com.dsd.resolveai.dto.UpdateIncidentRequest;
 import com.dsd.resolveai.entity.Incident;
 import com.dsd.resolveai.exception.ResourceNotFoundException;
@@ -73,27 +74,32 @@ public class IncidentService {
     }
 
     @Transactional(readOnly = true)
-    public List<IncidentResponse> dynamicSearch(Incident probe, String keyword, String sortProperty, String sortDirection, Integer limit) {
+    public List<IncidentResponse> dynamicSearch(SearchIncidentRequest request) {
 
         Specification<Incident> spec = Specification.where(null);
 
-        if (probe != null) {
+        // Map DTO fields to the Probe
+        if (request.status() != null || request.severity() != null || request.assignee() != null) {
+            Incident probe = new Incident();
+            probe.setStatus(request.status());
+            probe.setSeverity(request.severity());
+            probe.setAssignee(request.assignee());
             Example<Incident> example = Example.of(probe, ExampleMatcher.matchingAll().withIgnoreCase());
             spec = (root, query, cb) -> QueryByExamplePredicateBuilder.getPredicate(root, cb, example);
         }
 
-        if (keyword != null && !keyword.trim().isEmpty()) {
+        if (request.keyword() != null && !request.keyword().trim().isEmpty()) {
             FilterExpressionBuilder b = new FilterExpressionBuilder();
             var filterExp = b.eq("type", "incident");
 
-            if (probe != null && probe.getStatus() != null) {
-                filterExp = b.and(filterExp, b.eq("status", probe.getStatus().name()));
+            if (request.status() != null) {
+                filterExp = b.and(filterExp, b.eq("status", request.status().name()));
             }
-            if (probe != null && probe.getSeverity() != null) {
-                filterExp = b.and(filterExp, b.eq("severity", probe.getSeverity().name()));
+            if (request.severity() != null) {
+                filterExp = b.and(filterExp, b.eq("severity", request.severity().name()));
             }
             List<Document> semanticMatches = vectorStore.similaritySearch(
-                    SearchRequest.builder().query(keyword).filterExpression(filterExp.build()).build()
+                    SearchRequest.builder().query(request.keyword()).filterExpression(filterExp.build()).build()
             );
             List<UUID> matchingIds = semanticMatches.stream()
                     .map(doc -> UUID.fromString(doc.getMetadata().get("incidentId").toString()))
@@ -104,17 +110,19 @@ public class IncidentService {
         }
 
         Sort sort = Sort.unsorted();
-        if (sortProperty != null && !sortProperty.trim().isEmpty()) {
-            Sort.Direction direction = "DESC".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
-            sort = Sort.by(direction, sortProperty);
+        if (request.sortProperty() != null && !request.sortProperty().trim().isEmpty()) {
+            Sort.Direction direction = "ASC".equalsIgnoreCase(request.sortDirection()) ? Sort.Direction.ASC : Sort.Direction.DESC;
+            sort = Sort.by(direction, request.sortProperty());
         }
-        int actualLimit = (limit != null && limit > 0) ? Math.min(limit, 50) : 10;
+
+        int actualLimit = (request.limit() != null && request.limit() > 0) ? Math.min(request.limit(), 50) : 10;
 
         return incidentRepository.findAll(spec, PageRequest.of(0, actualLimit, sort))
                 .stream()
                 .map(IncidentMapper::toResponse)
                 .toList();
     }
+
 
     @Transactional(readOnly = true)
     public List<IncidentResponse> findSimilarIncidents(String keyword) {

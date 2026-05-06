@@ -35,6 +35,7 @@ public class ChatService {
 
         try {
             RouteDecision routeDecision = routerClient.prompt()
+                    .user(message)
                     .call()
                     .entity(RouteDecision.class);
 

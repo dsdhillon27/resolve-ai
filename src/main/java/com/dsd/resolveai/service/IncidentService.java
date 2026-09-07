@@ -10,6 +10,7 @@ import com.dsd.resolveai.mapper.IncidentMapper;
 import com.dsd.resolveai.repository.IncidentRepository;
 import com.dsd.resolveai.repository.IncidentSpecification;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
@@ -24,13 +25,13 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class IncidentService {
 
     private final IncidentRepository incidentRepository;
@@ -78,7 +79,6 @@ public class IncidentService {
 
         Specification<Incident> spec = Specification.where(null);
 
-        // Map DTO fields to the Probe
         if (request.status() != null || request.severity() != null || request.assignee() != null) {
             Incident probe = new Incident();
             probe.setStatus(request.status());
@@ -88,41 +88,61 @@ public class IncidentService {
             spec = (root, query, cb) -> QueryByExamplePredicateBuilder.getPredicate(root, cb, example);
         }
 
+        Sort sort;
+        if (request.sortProperty() != null && !request.sortProperty().trim().isEmpty()) {
+            Sort.Direction direction = "ASC".equalsIgnoreCase(request.sortDirection()) ? Sort.Direction.ASC : Sort.Direction.DESC;
+            sort = Sort.by(direction, request.sortProperty());
+        } else {
+            sort = Sort.by(Sort.Direction.DESC, "createdAt");
+        }
+
+        int actualLimit = (request.limit() != null && request.limit() > 0) ? Math.min(request.limit(), 50) : 10;
+
         if (request.keyword() != null && !request.keyword().trim().isEmpty()) {
             FilterExpressionBuilder b = new FilterExpressionBuilder();
             var filterExp = b.eq("type", "incident");
-
             if (request.status() != null) {
                 filterExp = b.and(filterExp, b.eq("status", request.status().name()));
             }
             if (request.severity() != null) {
                 filterExp = b.and(filterExp, b.eq("severity", request.severity().name()));
             }
+
             List<Document> semanticMatches = vectorStore.similaritySearch(
-                    SearchRequest.builder().query(request.keyword()).filterExpression(filterExp.build()).build()
+                    SearchRequest.builder()
+                            .query(request.keyword())
+                            .filterExpression(filterExp.build())
+                            .similarityThreshold(0.5)
+                            .topK(actualLimit * 5)
+                            .build()
             );
-            List<UUID> matchingIds = semanticMatches.stream()
-                    .map(doc -> UUID.fromString(doc.getMetadata().get("incidentId").toString()))
-                    .toList();
-            if (matchingIds.isEmpty()) return List.of();
 
-            spec = spec.and((root, query, cb) -> root.get("id").in(matchingIds));
+            if (!semanticMatches.isEmpty()) {
+                List<UUID> rankedIds = semanticMatches.stream()
+
+                        .map(doc -> UUID.fromString(doc.getMetadata().get("incidentId").toString()))
+                        .toList();
+                Map<UUID, Integer> rankIndex = IntStream.range(0, rankedIds.size())
+                        .boxed()
+                        .collect(Collectors.toMap(rankedIds::get, i -> i));
+
+                Specification<Incident> rankedSpec = spec.and((root, query, cb) -> root.get("id").in(rankedIds));
+
+                return incidentRepository.findAll(rankedSpec).stream()
+                        .sorted(Comparator.comparing(i -> rankIndex.getOrDefault(i.getId(), Integer.MAX_VALUE)))
+                        .limit(actualLimit)
+                        .map(IncidentMapper::toResponse)
+                        .toList();
+            }
+
+            log.debug("No semantic matches above threshold for keyword '{}', falling back to relational filters only", request.keyword());
         }
-
-        Sort sort = Sort.unsorted();
-        if (request.sortProperty() != null && !request.sortProperty().trim().isEmpty()) {
-            Sort.Direction direction = "ASC".equalsIgnoreCase(request.sortDirection()) ? Sort.Direction.ASC : Sort.Direction.DESC;
-            sort = Sort.by(direction, request.sortProperty());
-        }
-
-        int actualLimit = (request.limit() != null && request.limit() > 0) ? Math.min(request.limit(), 50) : 10;
 
         return incidentRepository.findAll(spec, PageRequest.of(0, actualLimit, sort))
                 .stream()
                 .map(IncidentMapper::toResponse)
                 .toList();
     }
-
 
     @Transactional(readOnly = true)
     public List<IncidentResponse> findSimilarIncidents(String keyword) {

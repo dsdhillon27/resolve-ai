@@ -3,7 +3,9 @@ package com.dsd.resolveai.service;
 import com.dsd.resolveai.enums.RouteDecision;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.VectorStoreChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -16,17 +18,20 @@ public class ChatService {
     private final ChatClient sreClient;
     private final ChatClient generalClient;
     private final VectorStore vectorStore;
+    private final ChatMemory chatMemory;
 
     public ChatService(
             @Qualifier("routerClient") ChatClient routerClient,
             @Qualifier("sreClient") ChatClient sreClient,
             @Qualifier("generalClient") ChatClient generalClient,
-            VectorStore vectorStore) {
+            VectorStore vectorStore,
+            ChatMemory chatMemory) {
 
         this.routerClient = routerClient;
         this.sreClient = sreClient;
         this.generalClient = generalClient;
         this.vectorStore = vectorStore;
+        this.chatMemory = chatMemory;
     }
 
     public String chat(String conversationId, String message) {
@@ -56,9 +61,15 @@ public class ChatService {
 
         return activeClient
                 .prompt(message)
-                .advisors(VectorStoreChatMemoryAdvisor.builder(vectorStore)
-                        .conversationId(conversationId)
-                        .build())
+                .advisors(
+                        MessageChatMemoryAdvisor
+                                .builder(chatMemory)
+                                .conversationId(conversationId)
+                                .build()
+//                        VectorStoreChatMemoryAdvisor.builder(vectorStore)
+//                        .conversationId(conversationId)
+//                        .build()
+                )
                 .call()
                 .content();
     }

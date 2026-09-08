@@ -1,18 +1,25 @@
 package com.dsd.resolveai.config;
 
 import com.dsd.resolveai.advisor.PIIRedactionAdvisor;
+import com.dsd.resolveai.enums.AgentRoute;
 import com.dsd.resolveai.tools.DatabaseTools;
 import com.dsd.resolveai.tools.IncidentTools;
 import com.dsd.resolveai.tools.RunbookTools;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
+
+import java.util.Arrays;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Configuration
 public class AgentConfig {
@@ -22,8 +29,15 @@ public class AgentConfig {
     public ChatClient routeClient(
             ChatModel chatModel,
             @Value("classpath:prompt/router-system-prompt.st") Resource resource) {
+
+        // Single source of truth: the enum describes the agents, the prompt renders them.
+        String agentCapabilities = Arrays.stream(AgentRoute.values())
+                .map(route -> "- " + route.name() + ": " + route.getDescription())
+                .collect(Collectors.joining("\n"));
+
         SystemPromptTemplate systemPromptTemplate = new SystemPromptTemplate(resource);
-        String routerSystemPrompt = systemPromptTemplate.render();
+        String routerSystemPrompt = systemPromptTemplate.render(
+                Map.of("agentCapabilities", agentCapabilities));
 
         return ChatClient.builder(chatModel)
                 .defaultSystem(routerSystemPrompt)
@@ -38,14 +52,17 @@ public class AgentConfig {
             @Value("classpath:prompt/sre-system-prompt.st") Resource resource,
             IncidentTools incidentTools,
             RunbookTools runbookTools,
-            DatabaseTools databaseTools) {
+            DatabaseTools databaseTools,
+            VectorStore vectorStore) {
         SystemPromptTemplate systemPromptTemplate = new SystemPromptTemplate(resource);
         String sreSystemPrompt = systemPromptTemplate.render();
 
         return ChatClient.builder(chatModel)
                 .defaultSystem(sreSystemPrompt)
-                .defaultAdvisors(new SimpleLoggerAdvisor(), new PIIRedactionAdvisor())
-                .defaultTools(incidentTools, runbookTools, databaseTools)
+                .defaultAdvisors(new SimpleLoggerAdvisor())
+//                        new PIIRedactionAdvisor(),
+//                        QuestionAnswerAdvisor.builder(vectorStore).build())
+                .defaultTools(incidentTools, databaseTools, runbookTools)
                 .build();
     }
 

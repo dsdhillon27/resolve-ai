@@ -1,14 +1,13 @@
 package com.dsd.resolveai.service;
 
-import com.dsd.resolveai.dto.CreateIncidentRequest;
-import com.dsd.resolveai.dto.IncidentResponse;
-import com.dsd.resolveai.dto.SearchIncidentRequest;
-import com.dsd.resolveai.dto.UpdateIncidentRequest;
+import com.dsd.resolveai.dto.*;
 import com.dsd.resolveai.entity.Incident;
+import com.dsd.resolveai.enums.FilterOperator;
+import com.dsd.resolveai.exception.InvalidFilterException;
 import com.dsd.resolveai.exception.ResourceNotFoundException;
 import com.dsd.resolveai.mapper.IncidentMapper;
+import com.dsd.resolveai.repository.IncidentFilterTranslator;
 import com.dsd.resolveai.repository.IncidentRepository;
-import com.dsd.resolveai.repository.IncidentSpecification;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -36,6 +35,9 @@ public class IncidentService {
 
     private final IncidentRepository incidentRepository;
     private final VectorStore vectorStore;
+    private final EntitySchemaService schemaService;
+    private final IncidentFilterTranslator filterTranslator;
+    private static final Set<String> VECTOR_METADATA_FIELDS = Set.of("status", "severity", "assignee");
 
     @Transactional
     public IncidentResponse createIncident(CreateIncidentRequest request) {
@@ -77,35 +79,21 @@ public class IncidentService {
     @Transactional(readOnly = true)
     public List<IncidentResponse> dynamicSearch(SearchIncidentRequest request) {
 
-        Specification<Incident> spec = Specification.where(null);
+        Specification<Incident> spec = filterTranslator.toSpecification(request.filters());
+        Sort sort = resolveSort(request);
+        int actualLimit = (request.limit() != null && request.limit() > 0)
+                ? Math.min(request.limit(), 50) : 10;
 
-        if (request.status() != null || request.severity() != null || request.assignee() != null) {
-            Incident probe = new Incident();
-            probe.setStatus(request.status());
-            probe.setSeverity(request.severity());
-            probe.setAssignee(request.assignee());
-            Example<Incident> example = Example.of(probe, ExampleMatcher.matchingAll().withIgnoreCase());
-            spec = (root, query, cb) -> QueryByExamplePredicateBuilder.getPredicate(root, cb, example);
-        }
-
-        Sort sort;
-        if (request.sortProperty() != null && !request.sortProperty().trim().isEmpty()) {
-            Sort.Direction direction = "ASC".equalsIgnoreCase(request.sortDirection()) ? Sort.Direction.ASC : Sort.Direction.DESC;
-            sort = Sort.by(direction, request.sortProperty());
-        } else {
-            sort = Sort.by(Sort.Direction.DESC, "createdAt");
-        }
-
-        int actualLimit = (request.limit() != null && request.limit() > 0) ? Math.min(request.limit(), 50) : 10;
-
-        if (request.keyword() != null && !request.keyword().trim().isEmpty()) {
+        if (StringUtils.isNotBlank(request.keyword())) {
             FilterExpressionBuilder b = new FilterExpressionBuilder();
             var filterExp = b.eq("type", "incident");
-            if (request.status() != null) {
-                filterExp = b.and(filterExp, b.eq("status", request.status().name()));
-            }
-            if (request.severity() != null) {
-                filterExp = b.and(filterExp, b.eq("severity", request.severity().name()));
+
+            // Pre-filter the vector search only on fields that exist in document metadata.
+            // Everything else is still enforced by the JPA spec below.
+            for (IncidentFilter f : request.filters() == null ? List.<IncidentFilter>of() : request.filters()) {
+                if (f.operator() == FilterOperator.EQ && VECTOR_METADATA_FIELDS.contains(f.field())) {
+                    filterExp = b.and(filterExp, b.eq(f.field(), f.value().toUpperCase()));
+                }
             }
 
             List<Document> semanticMatches = vectorStore.similaritySearch(
@@ -114,19 +102,16 @@ public class IncidentService {
                             .filterExpression(filterExp.build())
                             .similarityThreshold(0.5)
                             .topK(actualLimit * 5)
-                            .build()
-            );
+                            .build());
 
             if (!semanticMatches.isEmpty()) {
                 List<UUID> rankedIds = semanticMatches.stream()
-
                         .map(doc -> UUID.fromString(doc.getMetadata().get("incidentId").toString()))
                         .toList();
                 Map<UUID, Integer> rankIndex = IntStream.range(0, rankedIds.size())
-                        .boxed()
-                        .collect(Collectors.toMap(rankedIds::get, i -> i));
+                        .boxed().collect(Collectors.toMap(rankedIds::get, i -> i));
 
-                Specification<Incident> rankedSpec = spec.and((root, query, cb) -> root.get("id").in(rankedIds));
+                Specification<Incident> rankedSpec = spec.and((root, q, cb) -> root.get("id").in(rankedIds));
 
                 return incidentRepository.findAll(rankedSpec).stream()
                         .sorted(Comparator.comparing(i -> rankIndex.getOrDefault(i.getId(), Integer.MAX_VALUE)))
@@ -135,13 +120,26 @@ public class IncidentService {
                         .toList();
             }
 
-            log.debug("No semantic matches above threshold for keyword '{}', falling back to relational filters only", request.keyword());
+            log.debug("No semantic matches above threshold for keyword '{}', falling back to relational filters only",
+                    request.keyword());
         }
 
         return incidentRepository.findAll(spec, PageRequest.of(0, actualLimit, sort))
-                .stream()
-                .map(IncidentMapper::toResponse)
-                .toList();
+                .stream().map(IncidentMapper::toResponse).toList();
+    }
+
+    private Sort resolveSort(SearchIncidentRequest request) {
+        if (StringUtils.isBlank(request.sortProperty())) {
+            return Sort.by(Sort.Direction.DESC, "createdAt");
+        }
+        Map<String, Class<?>> fields = schemaService.fields("Incident");
+        if (!fields.containsKey(request.sortProperty())) {
+            throw new InvalidFilterException("Unknown sort field '" + request.sortProperty()
+                    + "'. Valid fields: " + String.join(", ", fields.keySet()));
+        }
+        Sort.Direction dir = "ASC".equalsIgnoreCase(request.sortDirection())
+                ? Sort.Direction.ASC : Sort.Direction.DESC;
+        return Sort.by(dir, request.sortProperty());
     }
 
     @Transactional(readOnly = true)

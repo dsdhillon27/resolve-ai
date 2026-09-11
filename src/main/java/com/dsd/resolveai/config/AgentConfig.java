@@ -2,7 +2,7 @@ package com.dsd.resolveai.config;
 
 import com.dsd.resolveai.advisor.PIIRedactionAdvisor;
 import com.dsd.resolveai.enums.AgentRoute;
-import com.dsd.resolveai.tools.DatabaseTools;
+import com.dsd.resolveai.service.EntitySchemaService;
 import com.dsd.resolveai.tools.IncidentTools;
 import com.dsd.resolveai.tools.RunbookTools;
 import org.springframework.ai.chat.client.ChatClient;
@@ -52,17 +52,15 @@ public class AgentConfig {
             @Value("classpath:prompt/sre-system-prompt.st") Resource resource,
             IncidentTools incidentTools,
             RunbookTools runbookTools,
-            DatabaseTools databaseTools,
-            VectorStore vectorStore) {
-        SystemPromptTemplate systemPromptTemplate = new SystemPromptTemplate(resource);
-        String sreSystemPrompt = systemPromptTemplate.render();
+            EntitySchemaService schemaService) {
+
+        String sreSystemPrompt = new SystemPromptTemplate(resource)
+                .render(Map.of("incidentSchema", schemaService.describe("Incident")));
 
         return ChatClient.builder(chatModel)
                 .defaultSystem(sreSystemPrompt)
                 .defaultAdvisors(new SimpleLoggerAdvisor())
-//                        new PIIRedactionAdvisor(),
-//                        QuestionAnswerAdvisor.builder(vectorStore).build())
-                .defaultTools(incidentTools, databaseTools, runbookTools)
+                .defaultTools(incidentTools, runbookTools)
                 .build();
     }
 

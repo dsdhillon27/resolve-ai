@@ -2,10 +2,12 @@ package com.dsd.resolveai.tools;
 
 import com.dsd.resolveai.dto.CreateIncidentRequest;
 import com.dsd.resolveai.dto.IncidentResponse;
+import com.dsd.resolveai.dto.IncidentFilter;
 import com.dsd.resolveai.dto.SearchIncidentRequest;
 import com.dsd.resolveai.entity.Incident;
 import com.dsd.resolveai.enums.IncidentSeverity;
 import com.dsd.resolveai.enums.IncidentStatus;
+import com.dsd.resolveai.exception.InvalidFilterException;
 import com.dsd.resolveai.service.IncidentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -61,30 +63,40 @@ public class IncidentTools {
 
 
     @Tool(description = """
-            Search the incidents table dynamically to find historical or active tickets/events.
-            DO NOT use this tool if the user is asking 'how to fix' something; use searchRunbooks instead.    """)
-    public List<IncidentResponse> searchIncidents(
-            @ToolParam(required = false, description = "Only set if the user explicitly filters by status (OPEN, IN_PROGRESS, CLOSED). Omit otherwise.")
-            IncidentStatus status,
-            @ToolParam(required = false, description = "Only set if the user explicitly filters by severity (LOW, MEDIUM, HIGH). Omit otherwise.")
-            IncidentSeverity severity,
-            @ToolParam(required = false, description = "Only set if the user explicitly names an assignee. Omit otherwise — never pass an empty string.")
-            String assignee,
-            @ToolParam(required = false, description = "Only set for genuine content/symptom search, e.g. 'database connection issues'. Omit for plain listing requests.")
+            Search the incidents table for historical or active tickets.
+            Build 'filters' using the Incident field list given in your system prompt.
+            DO NOT use this tool if the user asks 'how to fix' something; use searchRunbooks instead.
+            """)
+    public Object searchIncidents(
+            @ToolParam(required = false, description = """
+                    Structured filters, combined with AND. Each item is {field, operator, value}:
+                    'field' = exact camelCase Incident field name;
+                    'operator' = EQ, NE, GT, GTE, LT, LTE, or CONTAINS (text only);
+                    'value' = always a string, e.g. "HIGH", "OPEN", "2026-01-01T00:00:00Z".
+                    Example: [{"field":"severity","operator":"EQ","value":"HIGH"}]
+                    Omit entirely if the user gave no filters.
+                    """)
+            List<IncidentFilter> filters,
+
+            @ToolParam(required = false, description = "Only for genuine content/symptom search, e.g. 'database connection issues'. Omit for plain listing requests.")
             String keyword,
-            @ToolParam(required = false, description = "Entity field to sort by, using the exact camelCase Java field name from getSchema (e.g. 'createdAt'), not the DB column name. Omit to sort by most recent.")
+
+            @ToolParam(required = false, description = "Field to sort by, exact camelCase name. Omit to sort by newest first.")
             String sortProperty,
-            @ToolParam(required = false, description = "ASC or DESC. Defaults to DESC (most recent first) if omitted.")
+
+            @ToolParam(required = false, description = "ASC or DESC. Defaults to DESC.")
             String sortDirection,
-            @ToolParam(required = false, description = "Max results to return. Defaults to 10 if omitted.")
+
+            @ToolParam(required = false, description = "Max results. Defaults to 10, capped at 50.")
             Integer limit
     ) {
-        SearchIncidentRequest request = new SearchIncidentRequest(
-                status, severity,
-                StringUtils.isBlank(assignee) ? null : assignee,
-                StringUtils.isBlank(keyword) ? null : keyword,
-                sortProperty, sortDirection, limit);
-        return incidentService.dynamicSearch(request);
+        try {
+            return incidentService.dynamicSearch(new SearchIncidentRequest(
+                    filters,
+                    StringUtils.isBlank(keyword) ? null : keyword,
+                    sortProperty, sortDirection, limit));
+        } catch (InvalidFilterException e) {
+            return e.getMessage();   // model reads this and retries correctly
+        }
     }
-
 }
